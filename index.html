@@ -171,13 +171,11 @@ function beep(freq, dur=0.08, type='square', vol=0.12, slide=0) {
   } catch(e){}
 }
 
-/* ---------------- floor: infinite repeating grid + tiled neon frames ----------------
-   The board wraps (torus), and the camera follows the head in "unwrapped" space,
-   so the floor must be a periodic pattern with period GRID. We draw a wide patch
-   of grid lines and a 3x3 tiling of the neon border frame around the origin.     */
+/* ---------------- floor: one grid, one border ---------------- */
 {
+  // background floor lines (just texture, extends a bit past the arena)
   const pts = [];
-  const EXT = 32; // cover [-EXT, EXT] in both axes (head stays within ±GRID)
+  const EXT = 32;
   for (let p = -EXT - 1; p <= EXT + 1; p++) {
     pts.push(new THREE.Vector3(p, 0, -EXT), new THREE.Vector3(p, 0, EXT));
     pts.push(new THREE.Vector3(-EXT, 0, p), new THREE.Vector3(EXT, 0, p));
@@ -185,19 +183,15 @@ function beep(freq, dur=0.08, type='square', vol=0.12, slide=0) {
   const g = new THREE.BufferGeometry().setFromPoints(pts);
   scene.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color:0x0a3a4a, transparent:true, opacity:0.9 })));
 
-  // 3x3 tiling of the glowing border (period = GRID)
+  // THE single glowing arena border
   const L = GRID * CELL;
-  const borderPts = [];
-  for (let ox = -GRID; ox <= GRID; ox += GRID)
-    for (let oz = -GRID; oz <= GRID; oz += GRID) {
-      const x0 = ox - L/2, x1 = ox + L/2, z0 = oz - L/2, z1 = oz + L/2;
-      borderPts.push(new THREE.Vector3(x0,0.02,z0), new THREE.Vector3(x1,0.02,z0),
-                     new THREE.Vector3(x1,0.02,z0), new THREE.Vector3(x1,0.02,z1),
-                     new THREE.Vector3(x1,0.02,z1), new THREE.Vector3(x0,0.02,z1),
-                     new THREE.Vector3(x0,0.02,z1), new THREE.Vector3(x0,0.02,z0));
-    }
-  const border = new THREE.BufferGeometry().setFromPoints(borderPts);
-  scene.add(new THREE.LineSegments(border, new THREE.LineBasicMaterial({ color:0x00e5ff, transparent:true, opacity:0.85 })));
+  const border = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-L/2,0.02,-L/2), new THREE.Vector3(L/2,0.02,-L/2),
+    new THREE.Vector3(L/2,0.02,-L/2),  new THREE.Vector3(L/2,0.02,L/2),
+    new THREE.Vector3(L/2,0.02,L/2),   new THREE.Vector3(-L/2,0.02,L/2),
+    new THREE.Vector3(-L/2,0.02,L/2),  new THREE.Vector3(-L/2,0.02,-L/2),
+  ]);
+  scene.add(new THREE.LineLoop(border, new THREE.LineBasicMaterial({ color:0x00e5ff })));
 
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(300, 300),
@@ -220,9 +214,9 @@ scene.add(new THREE.AmbientLight(0x223344, 1.2));
 const rim = new THREE.PointLight(0x00e5ff, 60, 60); rim.position.set(0, 8, 0); scene.add(rim);
 
 /* ---------------- snake ----------------
-   headWorld = head position in UNWRAPPED world space (continuous across wraps).
-   Every mesh is drawn at the board-cell copy nearest to headWorld, so the whole
-   scene always stays clustered around the camera.                               */
+   Single board: every segment is drawn at its real cell (x - HALF).
+   When the head wraps an edge it simply appears on the opposite side and
+   the body streams across after it — classic torus snake.               */
 const segGeo = new THREE.BoxGeometry(0.82, 0.82, 0.82);
 const segMat = new THREE.MeshStandardMaterial({ color:0x001a22, emissive:0x00e5ff, emissiveIntensity:1.6, roughness:0.25, metalness:0.6 });
 const headMat = new THREE.MeshStandardMaterial({ color:0x00222a, emissive:0x66ffff, emissiveIntensity:2.2, roughness:0.2, metalness:0.6 });
@@ -233,7 +227,6 @@ const snakeGroup = new THREE.Group(); scene.add(snakeGroup);
 let snake = [];
 let meshes = [];
 let headMesh;
-let headWorld = { x: -HALF, z: 0 };
 let dir = { x:1, z:0 };
 let pendingDirs = [];
 
@@ -251,9 +244,7 @@ function buildSnake() {
   headMesh.add(makeEye(1), makeEye(-1));
 }
 
-function nearestOffset(base, target) {
-  return Math.round((target - base) / GRID) * GRID;
-}
+function headPos() { return { x: snake[0].x - HALF, z: snake[0].z - HALF }; }
 
 /* ---------------- food ---------------- */
 let food = null;
@@ -275,12 +266,7 @@ function spawnFood() {
   do { cell = { x: Math.floor(Math.random()*GRID), z: Math.floor(Math.random()*GRID) }; }
   while (snake.some(s => s.x===cell.x && s.z===cell.z));
   food = cell;
-  placeFood();
-}
-function placeFood() {
-  const bx = food.x - HALF, bz = food.z - HALF;
-  foodGroup.position.x = bx + nearestOffset(bx, headWorld.x);
-  foodGroup.position.z = bz + nearestOffset(bz, headWorld.z);
+  foodGroup.position.set(cell.x - HALF, 0.55, cell.z - HALF);
 }
 
 /* ---------------- burst particles ---------------- */
@@ -310,11 +296,11 @@ function reset() {
   const cx = Math.floor(GRID/2);
   snake = [ {x:cx-1,z:cx},{x:cx-2,z:cx},{x:cx-3,z:cx},{x:cx-4,z:cx} ];
   dir = {x:1,z:0}; pendingDirs = [];
-  headWorld = { x: snake[0].x - HALF, z: snake[0].z - HALF };
   score = 0; stepTimer = 0;
   scoreEl.textContent = 0;
-  camTarget.set(headWorld.x, 0.45, headWorld.z);
-  camera.position.set(headWorld.x, 13, headWorld.z + 10.5);
+  const h = headPos();
+  camTarget.set(h.x, 0.45, h.z);
+  camera.position.set(h.x, 13, h.z + 10.5);
   spawnFood();
   syncMeshes();
 }
@@ -322,9 +308,8 @@ function speed() { return 1 + Math.min(score / 120, 1.4); }
 function syncMeshes() {
   for (let i = 0; i < snake.length; i++) {
     const s = snake[i];
-    const bx = s.x - HALF, bz = s.z - HALF;
     const m = meshes[i];
-    m.position.set(bx + nearestOffset(bx, headWorld.x), 0.45, bz + nearestOffset(bz, headWorld.z));
+    m.position.set(s.x - HALF, 0.45, s.z - HALF);
     const sc = 1 - i*0.012;
     m.scale.setScalar(Math.max(sc, 0.55));
   }
@@ -343,22 +328,6 @@ function step() {
   const body = willGrow ? snake : snake.slice(0, -1);
   if (body.some(s => s.x===head.x && s.z===head.z)) { die(); return; }
 
-  // update unwrapped head position (nearest copy => continuous across wraps)
-  headWorld.x = head.x - HALF + nearestOffset(head.x - HALF, headWorld.x);
-  headWorld.z = head.z - HALF + nearestOffset(head.z - HALF, headWorld.z);
-
-  // keep unwrapped coords bounded; the floor pattern is periodic with period GRID,
-  // so shifting everything by k*GRID is visually invisible — just snap the camera.
-  let shiftX = 0, shiftZ = 0;
-  if (headWorld.x >  GRID) { headWorld.x -= GRID*2; shiftX = -GRID*2; }
-  if (headWorld.x < -GRID) { headWorld.x += GRID*2; shiftX =  GRID*2; }
-  if (headWorld.z >  GRID) { headWorld.z -= GRID*2; shiftZ = -GRID*2; }
-  if (headWorld.z < -GRID) { headWorld.z += GRID*2; shiftZ =  GRID*2; }
-  if (shiftX || shiftZ) {
-    camTarget.x += shiftX; camera.position.x += shiftX;
-    camTarget.z += shiftZ; camera.position.z += shiftZ;
-  }
-
   snake.unshift(head);
   if (willGrow) {
     score += FOOD_PER_STEP;
@@ -366,7 +335,8 @@ function step() {
     spdEl.textContent = speed().toFixed(1);
     const m = new THREE.Mesh(segGeo, segMat);
     snakeGroup.add(m); meshes.push(m);
-    burst(new THREE.Vector3(headWorld.x, 0.55, headWorld.z), 0xff2bd6);
+    const h = headPos();
+    burst(new THREE.Vector3(h.x, 0.55, h.z), 0xff2bd6);
     beep(660, 0.1, 'square', 0.14, 400);
     rim.color.setHSL(0.5 + Math.random()*0.25, 1, 0.6);
     spawnFood();
@@ -374,14 +344,14 @@ function step() {
     snake.pop();
   }
   syncMeshes();
-  placeFood();
 }
 
 function die() {
   state = 'dead';
   shake = 1;
   beep(120, 0.5, 'sawtooth', 0.2, -90);
-  burst(new THREE.Vector3(headWorld.x, 0.5, headWorld.z), 0xff3355);
+  const h = headPos();
+  burst(new THREE.Vector3(h.x, 0.5, h.z), 0xff3355);
   if (score > best) { best = score; localStorage.setItem('neonSerpentBest', best); bestEl.textContent = best; }
   document.getElementById('finalScore').textContent = 'SCORE: ' + score;
   setTimeout(() => document.getElementById('gameover').classList.remove('hidden'), 650);
@@ -494,11 +464,14 @@ function animate(t) {
   dust.rotation.y += dt*0.00003;
 
   // ---- camera: locked to the head ----
-  // look slightly ahead of travel direction, smooth exponential follow
+  // look slightly ahead of travel direction, smooth exponential follow.
+  // On a wall wrap the target jumps to the far side and the camera
+  // pans across the board to catch up.
+  const h = headPos();
   const lead = 1.6;
-  const fx = headWorld.x + dir.x * lead;
-  const fz = headWorld.z + dir.z * lead;
-  const k = 1 - Math.pow(0.002, dt / 1000); // ~fast, frame-rate independent
+  const fx = h.x + dir.x * lead;
+  const fz = h.z + dir.z * lead;
+  const k = 1 - Math.pow(0.002, dt / 1000); // frame-rate independent
   camTarget.x += (fx - camTarget.x) * k;
   camTarget.z += (fz - camTarget.z) * k;
 
@@ -515,7 +488,7 @@ function animate(t) {
   camera.lookAt(camTarget.x, 0.45, camTarget.z);
 
   // keep the key light centered on the head
-  rim.position.set(headWorld.x, 8, headWorld.z);
+  rim.position.set(h.x, 8, h.z);
 
   // pulse snake glow
   const pulse = 1.4 + Math.sin(t*0.005)*0.5;

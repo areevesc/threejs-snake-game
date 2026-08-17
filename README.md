@@ -13,7 +13,7 @@ A neon, cyberpunk Snake game rendered in 3D with [Three.js](https://threejs.org/
 - Space, a tap, or the on-screen pause button: pause or resume
 - R: restart
 
-The arena and camera wrap continuously at every edge. Collect the glowing food, avoid colliding with your own body, and beat your saved high score.
+The arena wraps at every edge while the locked camera pans across the board to catch each wrap. Collect the glowing food, avoid colliding with your own body, and beat your saved high score.
 
 ## Run locally
 
