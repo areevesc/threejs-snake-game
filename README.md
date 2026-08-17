@@ -8,8 +8,9 @@ A neon, cyberpunk Snake game rendered in 3D with [Three.js](https://threejs.org/
 
 ## Controls
 
-- WASD or arrow keys: steer
-- Space: pause or resume
+- WASD or arrow keys: steer on desktop
+- Swipe or use the on-screen directional pad: steer on mobile
+- Space or the on-screen pause button: pause or resume
 - R: restart
 
 The arena wraps at every edge. Collect the glowing food, avoid colliding with your own body, and beat your saved high score.

@@ -2,12 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Three.js Snake Game — Neon Serpent</title>
 <meta name="description" content="A neon 3D Snake game built with Three.js.">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  html,body { width:100%; height:100%; overflow:hidden; background:#020208; font-family:'Courier New', monospace; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#020208; font-family:'Courier New', monospace;
+    touch-action:none; -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
   #c { display:block; width:100%; height:100%; }
 
   .hud {
@@ -45,8 +46,14 @@
   @keyframes flicker {
     0%,93%,95%,100% { opacity:1; } 94% { opacity:.55; }
   }
-  .panel p { margin-top:18px; font-size:14px; letter-spacing:3px; opacity:.85; }
+  .panel p { margin-top:18px; font-size:14px; letter-spacing:3px; opacity:.85; text-align:center; padding:0 20px; }
   .panel .sub { margin-top:8px; font-size:11px; letter-spacing:2px; opacity:.5; }
+  @media (max-width:520px) {
+    .panel h1 { font-size:32px; letter-spacing:6px; text-align:center; }
+    #gameover h1 { font-size:24px; letter-spacing:4px; }
+    .panel p { font-size:12px; letter-spacing:2px; }
+    .panel .sub { font-size:10px; letter-spacing:1px; }
+  }
   .btn {
     margin-top:34px; padding:14px 46px; font-family:inherit; font-size:16px;
     letter-spacing:4px; color:#020208; background:#00e5ff; border:none; cursor:pointer;
@@ -59,6 +66,49 @@
   #gameover h1 { color:#fff; text-shadow:0 0 12px #ff2266, 0 0 40px #ff2266, 0 0 90px #ff0044; }
   #finalScore { font-size:26px; margin-top:22px; color:#fff; text-shadow:0 0 12px #00e5ff; letter-spacing:4px; }
   .hidden { display:none !important; }
+
+  /* ---------- mobile touch controls ---------- */
+  #dpad {
+    position:fixed; z-index:15; left:50%; bottom:18px; transform:translateX(-50%);
+    display:none; grid-template-columns:repeat(3, 64px); grid-template-rows:repeat(2, 64px);
+    gap:8px; pointer-events:none;
+  }
+  @media (pointer:coarse), (max-width:820px) {
+    #dpad { display:grid; }
+    #hint { display:none; }
+    #speed { bottom:auto; top:24px; left:50%; transform:translateX(-50%); }
+  }
+  .dkey {
+    pointer-events:auto; display:flex; align-items:center; justify-content:center;
+    font-size:22px; color:#7df9ff; background:rgba(0,229,255,0.08);
+    border:1px solid rgba(0,229,255,0.55);
+    box-shadow:0 0 12px rgba(0,229,255,0.25), inset 0 0 12px rgba(0,229,255,0.12);
+    clip-path:polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+    text-shadow:0 0 8px #00e5ff;
+    touch-action:none;
+  }
+  .dkey:active, .dkey.pressed {
+    background:rgba(0,229,255,0.35); color:#fff;
+    box-shadow:0 0 22px rgba(0,229,255,0.7), inset 0 0 18px rgba(0,229,255,0.4);
+  }
+  #dUp    { grid-column:2; grid-row:1; }
+  #dLeft  { grid-column:1; grid-row:2; }
+  #dRight { grid-column:3; grid-row:2; }
+  #dDown  { grid-column:2; grid-row:2; }
+  #pauseKey {
+    position:fixed; z-index:15; top:24px; left:50%; transform:translateX(-50%);
+    display:none; padding:8px 22px; font-size:12px; letter-spacing:3px;
+    color:#7df9ff; background:rgba(0,229,255,0.08); border:1px solid rgba(0,229,255,0.55);
+    box-shadow:0 0 12px rgba(0,229,255,0.25);
+    clip-path:polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+    touch-action:none;
+  }
+  @media (pointer:coarse), (max-width:820px) {
+    #pauseKey { display:block; }
+    #score { top:64px; }
+    #best { top:64px; }
+    #speed { top:104px; }
+  }
 </style>
 </head>
 <body>
@@ -70,6 +120,15 @@
 <div class="hud" id="best">BEST<br><span id="bestVal">0</span></div>
 <div class="hud" id="speed">VELOCITY <span id="spdVal">1.0</span>x</div>
 <div class="hud" id="hint">WASD / ARROWS — STEER<br>SPACE — PAUSE<br>R — REBOOT</div>
+
+<!-- mobile controls -->
+<div id="dpad">
+  <div class="dkey" id="dUp">▲</div>
+  <div class="dkey" id="dLeft">◀</div>
+  <div class="dkey" id="dDown">▼</div>
+  <div class="dkey" id="dRight">▶</div>
+</div>
+<div id="pauseKey">❚❚ PAUSE</div>
 
 <div class="panel" id="menu">
   <h1>NEON <span>SERPENT</span></h1>
@@ -87,7 +146,7 @@
 
 <div class="panel hidden" id="paused">
   <h1 style="font-size:36px; letter-spacing:8px;">STANDBY</h1>
-  <p>PRESS SPACE TO RESUME</p>
+  <p>PRESS SPACE / TAP TO RESUME</p>
 </div>
 
 <script type="importmap">
@@ -319,12 +378,16 @@ function die() {
   setTimeout(() => document.getElementById('gameover').classList.remove('hidden'), 650);
 }
 
-/* ---------------- input ---------------- */
+/* ---------------- input: keyboard ---------------- */
 function queueDir(x, z) {
   const last = pendingDirs.length ? pendingDirs[pendingDirs.length-1] : dir;
   if (x === -last.x && z === -last.z) return;
   if (x === last.x && z === last.z) return;
   if (pendingDirs.length < 3) pendingDirs.push({x, z});
+}
+function togglePause() {
+  if (state==='play'){ state='pause'; document.getElementById('paused').classList.remove('hidden'); }
+  else if (state==='pause'){ state='play'; document.getElementById('paused').classList.add('hidden'); }
 }
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
@@ -332,13 +395,53 @@ addEventListener('keydown', e => {
   else if (k==='s'||k==='arrowdown') { queueDir(0,1); e.preventDefault(); }
   else if (k==='a'||k==='arrowleft') { queueDir(-1,0); e.preventDefault(); }
   else if (k==='d'||k==='arrowright') { queueDir(1,0); e.preventDefault(); }
-  else if (k===' ') {
-    e.preventDefault();
-    if (state==='play'){ state='pause'; document.getElementById('paused').classList.remove('hidden'); }
-    else if (state==='pause'){ state='play'; document.getElementById('paused').classList.add('hidden'); }
-  }
+  else if (k===' ') { e.preventDefault(); togglePause(); }
   else if (k==='r') startGame();
 });
+
+/* ---------------- input: touch (swipe + d-pad) ---------------- */
+let touchStart = null;
+const SWIPE_MIN = 24; // px
+
+addEventListener('touchstart', e => {
+  if (e.target.closest('.dkey') || e.target.closest('.btn') || e.target.closest('#pauseKey')) return;
+  const t = e.changedTouches[0];
+  touchStart = { x: t.clientX, y: t.clientY };
+}, { passive:true });
+
+addEventListener('touchend', e => {
+  if (!touchStart) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - touchStart.x, dy = t.clientY - touchStart.y;
+  touchStart = null;
+  if (Math.abs(dx) < SWIPE_MIN && Math.abs(dy) < SWIPE_MIN) {
+    // tap: start / pause / resume
+    if (state === 'menu') startGame();
+    else if (state === 'dead') startGame();
+    else togglePause();
+    return;
+  }
+  if (Math.abs(dx) > Math.abs(dy)) queueDir(dx > 0 ? 1 : -1, 0);
+  else queueDir(0, dy > 0 ? 1 : -1);
+}, { passive:true });
+
+// d-pad buttons (pointer events cover touch + mouse)
+function bindDpad(id, x, z) {
+  const el = document.getElementById(id);
+  const press = ev => { ev.preventDefault(); queueDir(x, z); el.classList.add('pressed'); };
+  const release = () => el.classList.remove('pressed');
+  el.addEventListener('pointerdown', press);
+  el.addEventListener('pointerup', release);
+  el.addEventListener('pointerleave', release);
+  el.addEventListener('pointercancel', release);
+}
+bindDpad('dUp', 0, -1);
+bindDpad('dDown', 0, 1);
+bindDpad('dLeft', -1, 0);
+bindDpad('dRight', 1, 0);
+document.getElementById('pauseKey').addEventListener('pointerdown', e => { e.preventDefault(); togglePause(); });
+
+/* ---------------- start / restart ---------------- */
 function startGame() {
   document.getElementById('menu').classList.add('hidden');
   document.getElementById('gameover').classList.add('hidden');
